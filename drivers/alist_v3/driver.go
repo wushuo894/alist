@@ -2,7 +2,6 @@ package alist_v3
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"net/http"
 	"path"
