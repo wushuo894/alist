@@ -143,12 +143,9 @@ BuildDockerMultiplatform() {
 BuildRelease() {
   rm -rf .git/
   mkdir -p "build"
-  BuildWinArm64 ./build/alist-windows-arm64.exe
   xgo -out "$appName" -ldflags="$ldflags" -tags=jsoniter .
   # why? Because some target platforms seem to have issues with upx compression
   upx -9 ./alist-linux-amd64
-  cp ./alist-windows-amd64.exe ./alist-windows-amd64-upx.exe
-  upx -9 ./alist-windows-amd64-upx.exe
   mv alist-* build
 }
 
