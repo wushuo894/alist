@@ -145,7 +145,10 @@ func (d *ILanZou) Link(ctx context.Context, file model.Obj, args model.LinkArgs)
 	u.RawQuery = query.Encode()
 	realURL := u.String()
 	// get the url after redirect
-	res, err := base.NoRedirectClient.R().Get(realURL)
+	res, err := base.NoRedirectClient.R().SetHeaders(map[string]string{
+		//"Origin":  d.conf.site,
+		"Referer": d.conf.site + "/",
+	}).Get(realURL)
 	if err != nil {
 		return nil, err
 	}
@@ -268,7 +271,7 @@ func (d *ILanZou) Put(ctx context.Context, dstDir model.Obj, stream model.FileSt
 	defer func() {
 		_ = tempFile.Close()
 	}()
-	if _, err = io.Copy(h, tempFile); err != nil {
+	if _, err = utils.CopyWithBuffer(h, tempFile); err != nil {
 		return nil, err
 	}
 	_, err = tempFile.Seek(0, io.SeekStart)

@@ -5,17 +5,15 @@ package s3
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"strings"
 
-	"github.com/Mikubill/gofakes3"
 	"github.com/alist-org/alist/v3/internal/conf"
 	"github.com/alist-org/alist/v3/internal/errs"
 	"github.com/alist-org/alist/v3/internal/fs"
 	"github.com/alist-org/alist/v3/internal/model"
 	"github.com/alist-org/alist/v3/internal/op"
 	"github.com/alist-org/alist/v3/internal/setting"
-	"github.com/alist-org/alist/v3/pkg/utils"
+	"github.com/alist-org/gofakes3"
 )
 
 type Bucket struct {
@@ -150,15 +148,13 @@ func prefixParser(p *gofakes3.Prefix) (path, remaining string) {
 // 	}
 // }
 
-func authlistResolver(list []string) map[string]string {
-	authList := make(map[string]string)
-	for _, v := range list {
-		parts := strings.Split(v, ",")
-		if len(parts) != 2 {
-			utils.Log.Infof(fmt.Sprintf("Ignored: invalid auth pair %s", v))
-			continue
-		}
-		authList[parts[0]] = parts[1]
+func authlistResolver() map[string]string {
+	s3accesskeyid := setting.GetStr(conf.S3AccessKeyId)
+	s3secretaccesskey := setting.GetStr(conf.S3SecretAccessKey)
+	if s3accesskeyid == "" && s3secretaccesskey == "" {
+		return nil
 	}
+	authList := make(map[string]string)
+	authList[s3accesskeyid] = s3secretaccesskey
 	return authList
 }
