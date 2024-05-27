@@ -2,6 +2,7 @@ package alist_v3
 
 import (
 	"context"
+	"github.com/go-resty/resty/v2"
 	"io"
 	"net/http"
 	"path"
@@ -51,6 +52,13 @@ func (d *AListV3) Init(ctx context.Context) error {
 	})
 	if err != nil {
 		return err
+	}
+	if resp.Data.Role == model.GUEST {
+		url := d.Address + "/api/public/settings"
+		_, err := base.RestyClient.R().Get(url)
+		if err != nil {
+			return err
+		}
 	}
 	return err
 }
