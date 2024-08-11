@@ -32,7 +32,7 @@ jobs:
 
       - name: Build
         run: |
-          bash build.sh release linux_musl
+          bash build.sh release
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
