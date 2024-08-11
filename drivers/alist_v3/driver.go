@@ -2,7 +2,7 @@ package alist_v3
 
 import (
 	"context"
-	"github.com/go-resty/resty/v2"
+	"fmt"
 	"io"
 	"net/http"
 	"path"
