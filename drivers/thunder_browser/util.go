@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/alist-org/alist/v3/drivers/base"
@@ -19,6 +20,27 @@ const (
 	API_URL        = "https://x-api-pan.xunlei.com/drive/v1"
 	FILE_API_URL   = API_URL + "/files"
 	XLUSER_API_URL = "https://xluser-ssl.xunlei.com/v1"
+)
+
+var Algorithms = []string{
+	"uWRwO7gPfdPB/0NfPtfQO+71",
+	"F93x+qPluYy6jdgNpq+lwdH1ap6WOM+nfz8/V",
+	"0HbpxvpXFsBK5CoTKam",
+	"dQhzbhzFRcawnsZqRETT9AuPAJ+wTQso82mRv",
+	"SAH98AmLZLRa6DB2u68sGhyiDh15guJpXhBzI",
+	"unqfo7Z64Rie9RNHMOB",
+	"7yxUdFADp3DOBvXdz0DPuKNVT35wqa5z0DEyEvf",
+	"RBG",
+	"ThTWPG5eC0UBqlbQ+04nZAptqGCdpv9o55A",
+}
+
+const (
+	ClientID          = "ZUBzD9J_XPXfn7f7"
+	ClientSecret      = "yESVmHecEe6F0aou69vl-g"
+	ClientVersion     = "1.10.0.2633"
+	PackageName       = "com.xunlei.browser"
+	DownloadUserAgent = "AndroidDownloadManager/13 (Linux; U; Android 13; M2004J7AC Build/SP1A.210812.016)"
+	SdkVersion        = "233100"
 )
 
 const (
@@ -35,12 +57,10 @@ const (
 )
 
 const (
-	ThunderDriveFileID                = "XXXXXXXXXXXXXXXXXXXXXXXXXX"
-	ThunderBrowserDriveSafeFileID     = "YYYYYYYYYYYYYYYYYYYYYYYYYY"
-	ThunderDriveFolderName            = "迅雷云盘"
-	ThunderBrowserDriveSafeFolderName = "超级保险箱"
-	ThunderDriveType                  = 1
-	ThunderBrowserDriveSafeType       = 2
+	ThunderDriveSpace                 = ""
+	ThunderDriveSafeSpace             = "SPACE_SAFE"
+	ThunderBrowserDriveSpace          = "SPACE_BROWSER"
+	ThunderBrowserDriveSafeSpace      = "SPACE_BROWSER_SAFE"
 	ThunderDriveFolderType            = "DEFAULT_ROOT"
 	ThunderBrowserDriveSafeFolderType = "BROWSER_SAFE"
 )
@@ -72,6 +92,10 @@ type Common struct {
 
 	// 验证码token刷新成功回调
 	refreshCTokenCk func(token string)
+}
+
+func (c *Common) SetDeviceID(deviceID string) {
+	c.DeviceID = deviceID
 }
 
 func (c *Common) SetCaptchaToken(captchaToken string) {
@@ -246,4 +270,42 @@ func EncryptPassword(password string) string {
 	hash := md5.Sum(byteData)
 	// 将哈希值转换为十六进制字符串
 	return hex.EncodeToString(hash[:])
+}
+
+func generateDeviceSign(deviceID, packageName string) string {
+
+	signatureBase := fmt.Sprintf("%s%s%s%s", deviceID, packageName, "22062", "a5d7416858147a4ab99573872ffccef8")
+
+	sha1Hash := sha1.New()
+	sha1Hash.Write([]byte(signatureBase))
+	sha1Result := sha1Hash.Sum(nil)
+
+	sha1String := hex.EncodeToString(sha1Result)
+
+	md5Hash := md5.New()
+	md5Hash.Write([]byte(sha1String))
+	md5Result := md5Hash.Sum(nil)
+
+	md5String := hex.EncodeToString(md5Result)
+
+	deviceSign := fmt.Sprintf("div101.%s%s", deviceID, md5String)
+
+	return deviceSign
+}
+
+func BuildCustomUserAgent(deviceID, appName, sdkVersion, clientVersion, packageName string) string {
+	//deviceSign := generateDeviceSign(deviceID, packageName)
+	var sb strings.Builder
+
+	sb.WriteString(fmt.Sprintf("ANDROID-%s/%s ", appName, clientVersion))
+	sb.WriteString("networkType/WIFI ")
+	sb.WriteString(fmt.Sprintf("appid/%s ", "22062"))
+	sb.WriteString(fmt.Sprintf("deviceName/Xiaomi_M2004j7ac "))
+	sb.WriteString(fmt.Sprintf("deviceModel/M2004J7AC "))
+	sb.WriteString(fmt.Sprintf("OSVersion/13 "))
+	sb.WriteString(fmt.Sprintf("protocolVersion/301 "))
+	sb.WriteString(fmt.Sprintf("platformversion/10 "))
+	sb.WriteString(fmt.Sprintf("sdkVersion/%s ", sdkVersion))
+	sb.WriteString(fmt.Sprintf("Oauth2Client/0.9 (Linux 4_9_337-perf-sn-uotan-gd9d488809c3d) (JAVA 0) "))
+	return sb.String()
 }

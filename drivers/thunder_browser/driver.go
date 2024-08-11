@@ -2,10 +2,10 @@ package thunder_browser
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"github.com/alist-org/alist/v3/drivers/base"
 	"github.com/alist-org/alist/v3/internal/driver"
-	"github.com/alist-org/alist/v3/internal/errs"
 	"github.com/alist-org/alist/v3/internal/model"
 	"github.com/alist-org/alist/v3/internal/op"
 	"github.com/alist-org/alist/v3/pkg/utils"
@@ -15,8 +15,8 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3/s3manager"
 	"github.com/go-resty/resty/v2"
+	"io"
 	"net/http"
-	"regexp"
 	"strings"
 )
 
@@ -53,33 +53,17 @@ func (x *ThunderBrowser) Init(ctx context.Context) (err error) {
 	if x.XunLeiBrowserCommon == nil {
 		x.XunLeiBrowserCommon = &XunLeiBrowserCommon{
 			Common: &Common{
-				client: base.NewRestyClient(),
-				Algorithms: []string{
-					"x+I5XiTByg",
-					"6QU1x5DqGAV3JKg6h",
-					"VI1vL1WXr7st0es",
-					"n+/3yhlrnKs4ewhLgZhZ5ITpt554",
-					"UOip2PE7BLIEov/ZX6VOnsz",
-					"Q70h9lpViNCOC8sGVkar9o22LhBTjfP",
-					"IVHFuB1JcMlaZHnW",
-					"bKE",
-					"HZRbwxOiQx+diNopi6Nu",
-					"fwyasXgYL3rP314331b",
-					"LWxXAiSW4",
-					"UlWIjv1HGrC6Ngmt4Nohx",
-					"FOa+Lc0bxTDpTwIh2",
-					"0+RY",
-					"xmRVMqokHHpvsiH0",
-				},
+				client:            base.NewRestyClient(),
+				Algorithms:        Algorithms,
 				DeviceID:          utils.GetMD5EncodeStr(x.Username + x.Password),
-				ClientID:          "ZUBzD9J_XPXfn7f7",
-				ClientSecret:      "yESVmHecEe6F0aou69vl-g",
-				ClientVersion:     "1.0.7.1938",
-				PackageName:       "com.xunlei.browser",
-				UserAgent:         "ANDROID-com.xunlei.browser/1.0.7.1938 netWorkType/5G appid/22062 deviceName/Xiaomi_M2004j7ac deviceModel/M2004J7AC OSVersion/12 protocolVersion/301 platformVersion/10 sdkVersion/233100 Oauth2Client/0.9 (Linux 4_14_186-perf-gddfs8vbb238b) (JAVA 0)",
-				DownloadUserAgent: "AndroidDownloadManager/12 (Linux; U; Android 12; M2004J7AC Build/SP1A.210812.016)",
+				ClientID:          ClientID,
+				ClientSecret:      ClientSecret,
+				ClientVersion:     ClientVersion,
+				PackageName:       PackageName,
+				UserAgent:         BuildCustomUserAgent(utils.GetMD5EncodeStr(x.Username+x.Password), PackageName, SdkVersion, ClientVersion, PackageName),
+				DownloadUserAgent: DownloadUserAgent,
 				UseVideoUrl:       x.UseVideoUrl,
-
+				RemoveWay:         x.Addition.RemoveWay,
 				refreshCTokenCk: func(token string) {
 					x.CaptchaToken = token
 					op.MustSaveDriverStorage(x)
@@ -106,6 +90,9 @@ func (x *ThunderBrowser) Init(ctx context.Context) (err error) {
 	ctoekn := strings.TrimSpace(x.CaptchaToken)
 	if ctoekn != "" {
 		x.SetCaptchaToken(ctoekn)
+	}
+	if x.DeviceID == "" {
+		x.SetDeviceID(utils.GetMD5EncodeStr(x.Username + x.Password))
 	}
 	x.XunLeiBrowserCommon.UseVideoUrl = x.UseVideoUrl
 	x.Addition.RootFolderID = x.RootFolderID
@@ -170,21 +157,36 @@ func (x *ThunderBrowserExpert) Init(ctx context.Context) (err error) {
 		x.XunLeiBrowserCommon = &XunLeiBrowserCommon{
 			Common: &Common{
 				client: base.NewRestyClient(),
-
 				DeviceID: func() string {
 					if len(x.DeviceID) != 32 {
-						return utils.GetMD5EncodeStr(x.DeviceID)
+						if x.LoginType == "user" {
+							return utils.GetMD5EncodeStr(x.Username + x.Password)
+						}
+						return utils.GetMD5EncodeStr(x.ExpertAddition.RefreshToken)
 					}
 					return x.DeviceID
 				}(),
-				ClientID:          x.ClientID,
-				ClientSecret:      x.ClientSecret,
-				ClientVersion:     x.ClientVersion,
-				PackageName:       x.PackageName,
-				UserAgent:         x.UserAgent,
-				DownloadUserAgent: x.DownloadUserAgent,
-				UseVideoUrl:       x.UseVideoUrl,
-
+				ClientID:      x.ClientID,
+				ClientSecret:  x.ClientSecret,
+				ClientVersion: x.ClientVersion,
+				PackageName:   x.PackageName,
+				UserAgent: func() string {
+					if x.ExpertAddition.UserAgent != "" {
+						return x.ExpertAddition.UserAgent
+					}
+					if x.LoginType == "user" {
+						return BuildCustomUserAgent(utils.GetMD5EncodeStr(x.Username+x.Password), x.PackageName, SdkVersion, x.ClientVersion, x.PackageName)
+					}
+					return BuildCustomUserAgent(utils.GetMD5EncodeStr(x.ExpertAddition.RefreshToken), x.PackageName, SdkVersion, x.ClientVersion, x.PackageName)
+				}(),
+				DownloadUserAgent: func() string {
+					if x.ExpertAddition.DownloadUserAgent != "" {
+						return x.ExpertAddition.DownloadUserAgent
+					}
+					return DownloadUserAgent
+				}(),
+				UseVideoUrl: x.UseVideoUrl,
+				RemoveWay:   x.ExpertAddition.RemoveWay,
 				refreshCTokenCk: func(token string) {
 					x.CaptchaToken = token
 					op.MustSaveDriverStorage(x)
@@ -192,8 +194,21 @@ func (x *ThunderBrowserExpert) Init(ctx context.Context) (err error) {
 			},
 		}
 
-		if x.CaptchaToken != "" {
-			x.SetCaptchaToken(x.CaptchaToken)
+		if x.ExpertAddition.CaptchaToken != "" {
+			x.SetCaptchaToken(x.ExpertAddition.CaptchaToken)
+			op.MustSaveDriverStorage(x)
+		}
+		if x.Common.DeviceID != "" {
+			x.ExpertAddition.DeviceID = x.Common.DeviceID
+			op.MustSaveDriverStorage(x)
+		}
+		if x.Common.UserAgent != "" {
+			x.ExpertAddition.UserAgent = x.Common.UserAgent
+			op.MustSaveDriverStorage(x)
+		}
+		if x.Common.DownloadUserAgent != "" {
+			x.ExpertAddition.DownloadUserAgent = x.Common.DownloadUserAgent
+			op.MustSaveDriverStorage(x)
 		}
 		x.XunLeiBrowserCommon.UseVideoUrl = x.UseVideoUrl
 		x.ExpertAddition.RootFolderID = x.RootFolderID
@@ -294,7 +309,7 @@ type XunLeiBrowserCommon struct {
 }
 
 func (xc *XunLeiBrowserCommon) List(ctx context.Context, dir model.Obj, args model.ListArgs) ([]model.Obj, error) {
-	return xc.getFiles(ctx, dir.GetID(), args.ReqPath)
+	return xc.getFiles(ctx, dir, args.ReqPath)
 }
 
 func (xc *XunLeiBrowserCommon) Link(ctx context.Context, file model.Obj, args model.LinkArgs) (*model.Link, error) {
@@ -302,16 +317,9 @@ func (xc *XunLeiBrowserCommon) Link(ctx context.Context, file model.Obj, args mo
 
 	params := map[string]string{
 		"_magic":         "2021",
-		"space":          "SPACE_BROWSER",
+		"space":          file.(*Files).GetSpace(),
 		"thumbnail_size": "SIZE_LARGE",
 		"with":           "url",
-	}
-	// 对 "迅雷云盘" 内的文件 特殊处理
-	if file.GetPath() == ThunderDriveFileID {
-		params = map[string]string{}
-	} else if file.GetPath() == ThunderBrowserDriveSafeFileID {
-		// 对 "超级保险箱" 内的文件 特殊处理
-		params["space"] = "SPACE_BROWSER_SAFE"
 	}
 
 	_, err := xc.Request(FILE_API_URL+"/{fileID}", http.MethodGet, func(r *resty.Request) {
@@ -346,22 +354,9 @@ func (xc *XunLeiBrowserCommon) MakeDir(ctx context.Context, parentDir model.Obj,
 		"kind":      FOLDER,
 		"name":      dirName,
 		"parent_id": parentDir.GetID(),
-		"space":     "SPACE_BROWSER",
+		"space":     parentDir.(*Files).GetSpace(),
 	}
-	if parentDir.GetPath() == ThunderDriveFileID {
-		js = base.Json{
-			"kind":      FOLDER,
-			"name":      dirName,
-			"parent_id": parentDir.GetID(),
-		}
-	} else if parentDir.GetPath() == ThunderBrowserDriveSafeFileID {
-		js = base.Json{
-			"kind":      FOLDER,
-			"name":      dirName,
-			"parent_id": parentDir.GetID(),
-			"space":     "SPACE_BROWSER_SAFE",
-		}
-	}
+
 	_, err := xc.Request(FILE_API_URL, http.MethodPost, func(r *resty.Request) {
 		r.SetContext(ctx)
 		r.SetBody(&js)
@@ -371,32 +366,13 @@ func (xc *XunLeiBrowserCommon) MakeDir(ctx context.Context, parentDir model.Obj,
 
 func (xc *XunLeiBrowserCommon) Move(ctx context.Context, srcObj, dstDir model.Obj) error {
 
-	srcSpace := "SPACE_BROWSER"
-	dstSpace := "SPACE_BROWSER"
-
-	// 对 "超级保险箱" 内的文件 特殊处理
-	if srcObj.GetPath() == ThunderBrowserDriveSafeFileID {
-		srcSpace = "SPACE_BROWSER_SAFE"
-	}
-	if dstDir.GetPath() == ThunderBrowserDriveSafeFileID {
-		dstSpace = "SPACE_BROWSER_SAFE"
-	}
-
 	params := map[string]string{
-		"_from": dstSpace,
+		"_from": srcObj.(*Files).GetSpace(),
 	}
 	js := base.Json{
-		"to":    base.Json{"parent_id": dstDir.GetID(), "space": dstSpace},
-		"space": srcSpace,
+		"to":    base.Json{"parent_id": dstDir.GetID(), "space": dstDir.(*Files).GetSpace()},
+		"space": srcObj.(*Files).GetSpace(),
 		"ids":   []string{srcObj.GetID()},
-	}
-	// 对 "迅雷云盘" 内的文件 特殊处理
-	if srcObj.GetPath() == ThunderDriveFileID {
-		params = map[string]string{}
-		js = base.Json{
-			"to":  base.Json{"parent_id": dstDir.GetID()},
-			"ids": []string{srcObj.GetID()},
-		}
 	}
 
 	_, err := xc.Request(FILE_API_URL+":batchMove", http.MethodPost, func(r *resty.Request) {
@@ -410,16 +386,7 @@ func (xc *XunLeiBrowserCommon) Move(ctx context.Context, srcObj, dstDir model.Ob
 func (xc *XunLeiBrowserCommon) Rename(ctx context.Context, srcObj model.Obj, newName string) error {
 
 	params := map[string]string{
-		"space": "SPACE_BROWSER",
-	}
-	// 对 "迅雷云盘" 内的文件 特殊处理
-	if srcObj.GetPath() == ThunderDriveFileID {
-		params = map[string]string{}
-	} else if srcObj.GetPath() == ThunderBrowserDriveSafeFileID {
-		// 对 "超级保险箱" 内的文件 特殊处理
-		params = map[string]string{
-			"space": "SPACE_BROWSER_SAFE",
-		}
+		"space": srcObj.(*Files).GetSpace(),
 	}
 
 	_, err := xc.Request(FILE_API_URL+"/{fileID}", http.MethodPatch, func(r *resty.Request) {
@@ -433,32 +400,13 @@ func (xc *XunLeiBrowserCommon) Rename(ctx context.Context, srcObj model.Obj, new
 
 func (xc *XunLeiBrowserCommon) Copy(ctx context.Context, srcObj, dstDir model.Obj) error {
 
-	srcSpace := "SPACE_BROWSER"
-	dstSpace := "SPACE_BROWSER"
-
-	// 对 "超级保险箱" 内的文件 特殊处理
-	if srcObj.GetPath() == ThunderBrowserDriveSafeFileID {
-		srcSpace = "SPACE_BROWSER_SAFE"
-	}
-	if dstDir.GetPath() == ThunderBrowserDriveSafeFileID {
-		dstSpace = "SPACE_BROWSER_SAFE"
-	}
-
 	params := map[string]string{
-		"_from": dstSpace,
+		"_from": srcObj.(*Files).GetSpace(),
 	}
 	js := base.Json{
-		"to":    base.Json{"parent_id": dstDir.GetID(), "space": dstSpace},
-		"space": srcSpace,
+		"to":    base.Json{"parent_id": dstDir.GetID(), "space": dstDir.(*Files).GetSpace()},
+		"space": srcObj.(*Files).GetSpace(),
 		"ids":   []string{srcObj.GetID()},
-	}
-	// 对 "迅雷云盘" 内的文件 特殊处理
-	if srcObj.GetPath() == ThunderDriveFileID {
-		params = map[string]string{}
-		js = base.Json{
-			"to":  base.Json{"parent_id": dstDir.GetID()},
-			"ids": []string{srcObj.GetID()},
-		}
 	}
 
 	_, err := xc.Request(FILE_API_URL+":batchCopy", http.MethodPost, func(r *resty.Request) {
@@ -473,29 +421,17 @@ func (xc *XunLeiBrowserCommon) Remove(ctx context.Context, obj model.Obj) error 
 
 	js := base.Json{
 		"ids":   []string{obj.GetID()},
-		"space": "SPACE_BROWSER",
+		"space": obj.(*Files).GetSpace(),
 	}
-	// 对 "迅雷云盘" 内的文件 特殊处理
-	if obj.GetPath() == ThunderDriveFileID {
-		js = base.Json{
-			"ids": []string{obj.GetID()},
-		}
-	} else if obj.GetPath() == ThunderBrowserDriveSafeFileID {
-		// 对 "超级保险箱" 内的文件 特殊处理
-		js = base.Json{
-			"ids":   []string{obj.GetID()},
-			"space": "SPACE_BROWSER_SAFE",
-		}
-	}
-
-	if xc.RemoveWay == "delete" && obj.GetPath() == ThunderDriveFileID {
+	// 先判断是否是特殊情况
+	if obj.(*Files).GetSpace() == ThunderDriveSpace {
 		_, err := xc.Request(FILE_API_URL+"/{fileID}/trash", http.MethodPatch, func(r *resty.Request) {
 			r.SetContext(ctx)
 			r.SetPathParam("fileID", obj.GetID())
 			r.SetBody("{}")
 		}, nil)
 		return err
-	} else if obj.GetPath() == ThunderBrowserDriveSafeFileID {
+	} else if obj.(*Files).GetSpace() == ThunderBrowserDriveSafeSpace || obj.(*Files).GetSpace() == ThunderDriveSafeSpace {
 		_, err := xc.Request(FILE_API_URL+":batchDelete", http.MethodPost, func(r *resty.Request) {
 			r.SetContext(ctx)
 			r.SetBody(&js)
@@ -503,12 +439,20 @@ func (xc *XunLeiBrowserCommon) Remove(ctx context.Context, obj model.Obj) error 
 		return err
 	}
 
-	_, err := xc.Request(FILE_API_URL+":batchTrash", http.MethodPost, func(r *resty.Request) {
-		r.SetContext(ctx)
-		r.SetBody(&js)
-	}, nil)
-	return err
-
+	// 根据用户选择的删除方式进行删除
+	if xc.RemoveWay == "delete" {
+		_, err := xc.Request(FILE_API_URL+":batchDelete", http.MethodPost, func(r *resty.Request) {
+			r.SetContext(ctx)
+			r.SetBody(&js)
+		}, nil)
+		return err
+	} else {
+		_, err := xc.Request(FILE_API_URL+":batchTrash", http.MethodPost, func(r *resty.Request) {
+			r.SetContext(ctx)
+			r.SetBody(&js)
+		}, nil)
+		return err
+	}
 }
 
 func (xc *XunLeiBrowserCommon) Put(ctx context.Context, dstDir model.Obj, stream model.FileStreamer, up driver.UpdateProgress) error {
@@ -533,29 +477,7 @@ func (xc *XunLeiBrowserCommon) Put(ctx context.Context, dstDir model.Obj, stream
 		"size":        stream.GetSize(),
 		"hash":        gcid,
 		"upload_type": UPLOAD_TYPE_RESUMABLE,
-		"space":       "SPACE_BROWSER",
-	}
-	// 对 "迅雷云盘" 内的文件 特殊处理
-	if dstDir.GetPath() == ThunderDriveFileID {
-		js = base.Json{
-			"kind":        FILE,
-			"parent_id":   dstDir.GetID(),
-			"name":        stream.GetName(),
-			"size":        stream.GetSize(),
-			"hash":        gcid,
-			"upload_type": UPLOAD_TYPE_RESUMABLE,
-		}
-	} else if dstDir.GetPath() == ThunderBrowserDriveSafeFileID {
-		// 对 "超级保险箱" 内的文件 特殊处理
-		js = base.Json{
-			"kind":        FILE,
-			"parent_id":   dstDir.GetID(),
-			"name":        stream.GetName(),
-			"size":        stream.GetSize(),
-			"hash":        gcid,
-			"upload_type": UPLOAD_TYPE_RESUMABLE,
-			"space":       "SPACE_BROWSER_SAFE",
-		}
+		"space":       dstDir.(*Files).GetSpace(),
 	}
 
 	var resp UploadTaskResponse
@@ -586,57 +508,34 @@ func (xc *XunLeiBrowserCommon) Put(ctx context.Context, dstDir model.Obj, stream
 			Bucket:  aws.String(param.Bucket),
 			Key:     aws.String(param.Key),
 			Expires: aws.Time(param.Expiration),
-			Body:    stream,
+			Body:    io.TeeReader(stream, driver.NewProgress(stream.GetSize(), up)),
 		})
 		return err
 	}
 	return nil
 }
 
-func (xc *XunLeiBrowserCommon) getFiles(ctx context.Context, folderId string, path string) ([]model.Obj, error) {
+func (xc *XunLeiBrowserCommon) getFiles(ctx context.Context, dir model.Obj, path string) ([]model.Obj, error) {
 	files := make([]model.Obj, 0)
 	var pageToken string
 	for {
 		var fileList FileList
-		folderSpace := "SPACE_BROWSER"
+		folderSpace := ""
+		switch dirF := dir.(type) {
+		case *Files:
+			folderSpace = dirF.GetSpace()
+		default:
+			// 处理 根目录的情况
+			folderSpace = ThunderBrowserDriveSpace
+		}
 		params := map[string]string{
-			"parent_id":      folderId,
+			"parent_id":      dir.GetID(),
 			"page_token":     pageToken,
 			"space":          folderSpace,
 			"filters":        `{"trashed":{"eq":false}}`,
+			"with":           "url",
 			"with_audit":     "true",
 			"thumbnail_size": "SIZE_LARGE",
-		}
-		var fileType int8
-		// 处理特殊目录 “迅雷云盘” 设置特殊的 params 以便正常访问
-		pattern1 := fmt.Sprintf(`^/.*/%s(/.*)?$`, ThunderDriveFolderName)
-		thunderDriveMatch, _ := regexp.MatchString(pattern1, path)
-		// 处理特殊目录 “超级保险箱” 设置特殊的 params 以便正常访问
-		pattern2 := fmt.Sprintf(`^/.*/%s(/.*)?$`, ThunderBrowserDriveSafeFolderName)
-		thunderBrowserDriveSafeMatch, _ := regexp.MatchString(pattern2, path)
-
-		// 如果是 "迅雷云盘" 内的
-		if folderId == ThunderDriveFileID || thunderDriveMatch {
-			params = map[string]string{
-				"space":      "",
-				"__type":     "drive",
-				"refresh":    "true",
-				"__sync":     "true",
-				"parent_id":  folderId,
-				"page_token": pageToken,
-				"with_audit": "true",
-				"limit":      "100",
-				"filters":    `{"phase":{"eq":"PHASE_TYPE_COMPLETE"},"trashed":{"eq":false}}`,
-			}
-			// 如果不是 "迅雷云盘"的"根目录"
-			if folderId == ThunderDriveFileID {
-				params["parent_id"] = ""
-			}
-			fileType = ThunderDriveType
-		} else if thunderBrowserDriveSafeMatch {
-			// 如果是 "超级保险箱" 内的
-			fileType = ThunderBrowserDriveSafeType
-			params["space"] = "SPACE_BROWSER_SAFE"
 		}
 
 		_, err := xc.Request(FILE_API_URL, http.MethodGet, func(r *resty.Request) {
@@ -646,24 +545,13 @@ func (xc *XunLeiBrowserCommon) getFiles(ctx context.Context, folderId string, pa
 		if err != nil {
 			return nil, err
 		}
-		// 对文件夹也进行处理
-		fileList.FolderType = fileType
 
-		for i := 0; i < len(fileList.Files); i++ {
-			file := &fileList.Files[i]
-			// 标记 文件夹内的文件
-			file.FileType = fileList.FolderType
+		for i := range fileList.Files {
 			// 解决 "迅雷云盘" 重复出现问题————迅雷后端发送错误
-			if file.Name == ThunderDriveFolderName && file.ID == "" && file.FolderType == ThunderDriveFolderType && folderId != "" {
+			if fileList.Files[i].FolderType == ThunderDriveFolderType && fileList.Files[i].ID == "" && fileList.Files[i].Space == "" && dir.GetID() != "" {
 				continue
 			}
-			// 处理特殊目录 “迅雷云盘” 设置特殊的文件夹ID
-			if file.Name == ThunderDriveFolderName && file.ID == "" && file.FolderType == ThunderDriveFolderType {
-				file.ID = ThunderDriveFileID
-			} else if file.Name == ThunderBrowserDriveSafeFolderName && file.FolderType == ThunderBrowserDriveSafeFolderType {
-				file.FileType = ThunderBrowserDriveSafeType
-			}
-			files = append(files, file)
+			files = append(files, &fileList.Files[i])
 		}
 
 		if fileList.NextPageToken == "" {
@@ -756,7 +644,7 @@ func (xc *XunLeiBrowserCommon) RefreshToken(refreshToken string) (*TokenResp, er
 	}
 
 	if resp.RefreshToken == "" {
-		return nil, errs.EmptyToken
+		return nil, errors.New("refresh token is empty")
 	}
 	return &resp, nil
 }
@@ -775,7 +663,7 @@ func (xc *XunLeiBrowserCommon) GetSafeAccessToken(safePassword string) (string, 
 	}
 
 	if resp.Token == "" {
-		return "", errs.EmptyToken
+		return "", errors.New("SafePassword is incorrect ")
 	}
 	return resp.Token, nil
 }
