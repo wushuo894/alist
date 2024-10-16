@@ -37,4 +37,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: alist_${{ env.SHA }}
-          path: dist
+          path: dist/alist-linux-musl-amd64
