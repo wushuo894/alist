@@ -31,10 +31,10 @@ jobs:
           sudo apt install upx
       - name: Build
         run: |
-          bash build.sh release
-          ls -al build
+          bash build.sh dev
+          ls -al dist
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: alist_${{ env.SHA }}
-          path: build/alist-linux-amd64
+          path: dist
