@@ -29,11 +29,10 @@ jobs:
           docker pull crazymax/xgo:latest
           go install github.com/crazy-max/xgo@latest
           sudo apt install upx
-          ls -al build
       - name: Build
         run: |
           bash build.sh release
-
+          ls -al build
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
