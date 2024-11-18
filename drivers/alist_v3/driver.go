@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	"github.com/alist-org/alist/v3/drivers/base"
-	"github.com/alist-org/alist/v3/internal/conf"
 	"github.com/alist-org/alist/v3/internal/driver"
 	"github.com/alist-org/alist/v3/internal/model"
 	"github.com/alist-org/alist/v3/pkg/utils"
@@ -51,20 +50,6 @@ func (d *AListV3) Init(ctx context.Context) error {
 	_, err = d.request("/me", http.MethodGet, func(req *resty.Request) {
 		req.SetResult(&resp)
 	})
-	if err != nil {
-		return err
-	}
-	if resp.Data.Role == model.GUEST {
-		url := d.Address + "/api/public/settings"
-		res, err := base.RestyClient.R().Get(url)
-		if err != nil {
-			return err
-		}
-		allowMounted := utils.Json.Get(res.Body(), "data", conf.AllowMounted).ToString() == "true"
-		if !allowMounted {
-			return fmt.Errorf("the site does not allow mounted")
-		}
-	}
 	return err
 }
 
