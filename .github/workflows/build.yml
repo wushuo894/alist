@@ -3,10 +3,6 @@ name: build
 on:
   workflow_dispatch:
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
-
 jobs:
   build:
     strategy:
@@ -33,13 +29,12 @@ jobs:
           docker pull crazymax/xgo:latest
           go install github.com/crazy-max/xgo@latest
           sudo apt install upx
-
       - name: Build
         run: |
           bash build.sh dev
-
+          ls -al dist
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: alist_${{ env.SHA }}
-          path: dist
+          path: dist/alist-linux-musl-amd64
